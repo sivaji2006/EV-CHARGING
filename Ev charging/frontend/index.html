@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart EV Remote Charging & Auto Cut-Off System</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- Chart.js for Live Battery Telemetry Monitoring -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <!-- Top Global App Bar -->
+    <header class="navbar">
+        <div class="navbar-container">
+            <div class="brand">
+                <div class="brand-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                    </svg>
+                </div>
+                <div class="brand-titles">
+                    <span class="brand-badge">IoT HARDWARE TELEMETRY DASHBOARD</span>
+                    <h1 class="brand-name">Smart EV Remote Charging & Auto Cut-Off System</h1>
+                </div>
+            </div>
+
+            <!-- Header Status Badges & Navigation -->
+            <div class="nav-controls">
+                <div class="nav-tabs">
+                    <button id="tab-btn-dashboard" class="tab-btn active" onclick="switchTab('dashboard')">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="3" width="7" height="7"></rect>
+                            <rect x="14" y="3" width="7" height="7"></rect>
+                            <rect x="14" y="14" width="7" height="7"></rect>
+                            <rect x="3" y="14" width="7" height="7"></rect>
+                        </svg>
+                        Live Dashboard
+                    </button>
+                    <button id="tab-btn-overview" class="tab-btn" onclick="switchTab('overview')">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="12" y1="16" x2="12" y2="12"></line>
+                            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                        </svg>
+                        System Overview
+                    </button>
+                </div>
+
+                <div class="header-status-group">
+                    <div id="esp32-badge" class="connection-badge badge-offline">
+                        <span class="indicator-dot"></span>
+                        <span id="esp32-badge-text">ESP32 Offline</span>
+                    </div>
+                    <div id="server-badge" class="connection-badge badge-offline">
+                        <span class="indicator-dot"></span>
+                        <span id="server-badge-text">Server Connecting...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <div class="dashboard-wrapper">
+
+        <!-- ==================================================================== -->
+        <!-- VIEW 1: LIVE DASHBOARD TAB                                           -->
+        <!-- ==================================================================== -->
+        <main id="view-dashboard" class="tab-content active">
+
+            <!-- System Auto Cut-Off Alert Banner (Triggered strictly on real hardware cut-off) -->
+            <section id="cutoff-banner" class="alert-banner alert-cutoff hidden">
+                <div class="alert-icon-wrapper">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                    </svg>
+                </div>
+                <div class="alert-content">
+                    <h3 class="alert-title">⚡ AUTO CUT-OFF ACTIVATED</h3>
+                    <p class="alert-description">
+                        Full-charge condition detected (<span id="cutoff-voltage-text">4.20V</span> / 100% SOC). Power relay has been automatically commanded <strong>OFF</strong>.
+                    </p>
+                </div>
+                <button class="alert-close-btn" onclick="dismissCutoffAlert()" title="Acknowledge Alert">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </section>
+
+            <!-- General Status Notification Toast -->
+            <div id="system-toast" class="system-toast hidden">
+                <span id="toast-message">System ready.</span>
+            </div>
+
+            <!-- Top Row: Quick Metrics Cards -->
+            <section class="metrics-row">
+                <!-- Battery Voltage -->
+                <div class="status-card">
+                    <div class="card-header">
+                        <span class="card-label">BATTERY VOLTAGE</span>
+                        <div class="card-icon cyan">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="metric-value-group">
+                            <span id="metric-voltage" class="metric-number">--</span>
+                            <span class="metric-unit">V</span>
+                        </div>
+                        <span id="metric-voltage-sub" class="metric-subtext">Waiting for sensor data</span>
+                    </div>
+                </div>
+
+                <!-- Estimated SOC -->
+                <div class="status-card">
+                    <div class="card-header">
+                        <span class="card-label">ESTIMATED SOC</span>
+                        <div class="card-icon green">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="1" y="6" width="18" height="12" rx="2"></rect>
+                                <line x1="23" y1="10" x2="23" y2="14"></line>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="metric-value-group">
+                            <span id="metric-soc" class="metric-number">--</span>
+                            <span class="metric-unit">%</span>
+                        </div>
+                        <span id="metric-soc-sub" class="metric-subtext">Calibrated Li-ion curve</span>
+                    </div>
+                </div>
+
+                <!-- Relay State -->
+                <div class="status-card">
+                    <div class="card-header">
+                        <span class="card-label">RELAY STATUS</span>
+                        <div class="card-icon purple">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+                                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="metric-value-group">
+                            <span id="metric-relay" class="metric-status status-off">OFF</span>
+                        </div>
+                        <span id="metric-relay-sub" class="metric-subtext">GPIO 26 Control</span>
+                    </div>
+                </div>
+
+                <!-- Charging State -->
+                <div class="status-card">
+                    <div class="card-header">
+                        <span class="card-label">CHARGING STATUS</span>
+                        <div class="card-icon amber">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <polyline points="12 6 12 12 16 14"></polyline>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="metric-value-group">
+                            <span id="metric-charging" class="metric-status status-off">STOPPED</span>
+                        </div>
+                        <span id="metric-charging-sub" class="metric-subtext">Power delivery inactive</span>
+                    </div>
+                </div>
+
+                <!-- ESP32 Hardware Link -->
+                <div class="status-card">
+                    <div class="card-header">
+                        <span class="card-label">ESP32 STATUS</span>
+                        <div class="card-icon blue">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="4" y="4" width="16" height="16" rx="2"></rect>
+                                <rect x="9" y="9" width="6" height="6"></rect>
+                                <line x1="9" y1="1" x2="9" y2="4"></line>
+                                <line x1="15" y1="1" x2="15" y2="4"></line>
+                                <line x1="9" y1="20" x2="9" y2="23"></line>
+                                <line x1="15" y1="20" x2="15" y2="23"></line>
+                                <line x1="20" y1="9" x2="23" y2="9"></line>
+                                <line x1="20" y1="14" x2="23" y2="14"></line>
+                                <line x1="1" y1="9" x2="4" y2="9"></line>
+                                <line x1="1" y1="14" x2="4" y2="14"></line>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="metric-value-group">
+                            <span id="metric-esp32" class="metric-status status-off">OFFLINE</span>
+                        </div>
+                        <span id="metric-esp32-ip" class="metric-subtext">IP: 192.168.1.100:80</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Main Interactive Section (2 Columns) -->
+            <section class="main-dashboard-grid">
+                
+                <!-- Left Focus: Primary Battery Gauge & Visualization -->
+                <div class="panel gauge-panel">
+                    <div class="panel-header">
+                        <div class="panel-title-group">
+                            <h2 class="panel-title">Battery Telemetry</h2>
+                            <p class="panel-subtitle">Real-time voltage & estimated State of Charge</p>
+                        </div>
+                        <div id="gauge-live-badge" class="live-pill idle">
+                            <span class="live-dot"></span>
+                            <span id="gauge-live-text">Awaiting Data</span>
+                        </div>
+                    </div>
+
+                    <!-- Circular Radial SVG SOC Gauge -->
+                    <div class="gauge-center-container">
+                        <div class="circular-gauge-wrapper">
+                            <svg class="gauge-svg" viewBox="0 0 240 240">
+                                <!-- Background Track -->
+                                <circle class="gauge-track" cx="120" cy="120" r="95"></circle>
+                                <!-- Progress Arc -->
+                                <circle id="gauge-progress" class="gauge-progress" cx="120" cy="120" r="95" stroke-dasharray="596.9" stroke-dashoffset="596.9"></circle>
+                            </svg>
+                            
+                            <!-- Gauge Inner Content -->
+                            <div class="gauge-inner-content">
+                                <div class="gauge-charging-icon" id="gauge-charging-icon">
+                                    <svg viewBox="0 0 24 24" fill="currentColor">
+                                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                                    </svg>
+                                </div>
+                                <div class="gauge-soc-display">
+                                    <span id="gauge-soc-val" class="gauge-soc-number">--</span>
+                                    <span class="gauge-soc-unit">%</span>
+                                </div>
+                                <span class="gauge-soc-label">ESTIMATED SOC</span>
+                                <div class="gauge-voltage-badge">
+                                    <span id="gauge-voltage-val">--</span> V
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Gauge Status Subtitle -->
+                        <div class="gauge-footer-note">
+                            <span id="gauge-status-desc" class="status-waiting-text">Waiting for live sensor data from ESP32 ADC (GPIO 34)</span>
+                        </div>
+                    </div>
+
+                    <!-- Battery Cell Metadata Breakdown -->
+                    <div class="cell-specs-grid">
+                        <div class="spec-item">
+                            <span class="spec-name">Chemistry</span>
+                            <span class="spec-value">18650 Li-ion</span>
+                        </div>
+                        <div class="spec-item">
+                            <span class="spec-name">Nominal Voltage</span>
+                            <span class="spec-value">3.70 V</span>
+                        </div>
+                        <div class="spec-item">
+                            <span class="spec-name">Cut-Off Threshold</span>
+                            <span class="spec-value highlight">4.20 V (100%)</span>
+                        </div>
+                        <div class="spec-item">
+                            <span class="spec-name">Charge Regulator</span>
+                            <span class="spec-value">TP4056 Module</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Focus: Charging Control & Auto Cut-Off Management -->
+                <div class="panel control-panel">
+                    
+                    <!-- Charging Command Box -->
+                    <div class="control-box">
+                        <div class="panel-header">
+                            <div class="panel-title-group">
+                                <h2 class="panel-title">Remote Charging Control</h2>
+                                <p class="panel-subtitle">Direct REST command link to ESP32 Relay</p>
+                            </div>
+                            <div id="charging-state-badge" class="state-pill stopped">
+                                <span class="state-dot"></span>
+                                <span id="charging-state-label">Charging Stopped</span>
+                            </div>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="action-buttons-wrapper">
+                            <button id="btn-start" class="btn btn-start-charge" onclick="startCharging()">
+                                <div class="btn-icon">
+                                    <svg viewBox="0 0 24 24" fill="currentColor">
+                                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                                    </svg>
+                                </div>
+                                <div class="btn-text-group">
+                                    <span class="btn-main-text">START CHARGING</span>
+                                    <span class="btn-sub-text">Energize Relay (GPIO 26)</span>
+                                </div>
+                            </button>
+
+                            <button id="btn-stop" class="btn btn-stop-charge" onclick="stopCharging()" disabled>
+                                <div class="btn-icon">
+                                    <svg viewBox="0 0 24 24" fill="currentColor">
+                                        <rect x="6" y="6" width="12" height="12"></rect>
+                                    </svg>
+                                </div>
+                                <div class="btn-text-group">
+                                    <span class="btn-main-text">STOP CHARGING</span>
+                                    <span class="btn-sub-text">Isolate Power Relay</span>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Auto Cut-Off Protection Card -->
+                    <div class="protection-box">
+                        <div class="protection-header">
+                            <div class="protection-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                                    <path d="m9 12 2 2 4-4"></path>
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 class="protection-title">AUTO CUT-OFF PROTECTION</h3>
+                                <div class="protection-status-active">
+                                    <span class="pulse-green-dot" id="protection-dot"></span>
+                                    <span id="protection-status-text">Protection Monitoring Active</span>
+                                </div>
+                            </div>
+                        </div>
+                        <p class="protection-desc">
+                            The ESP32 samples 18650 terminal voltage via calibrated ADC sensing. When terminal voltage reaches <strong>4.20V (100% Estimated SOC)</strong>, the backend/ESP32 automatically de-energizes the relay, cutting off 5V DC input to the TP4056 charger and protecting the Li-ion cell.
+                        </p>
+                    </div>
+
+                </div>
+            </section>
+
+            <!-- Real-Time Monitoring Graph & Health Breakdown (2 Columns) -->
+            <section class="monitoring-grid">
+                
+                <!-- Real-Time Battery Telemetry Graph -->
+                <div class="panel graph-panel">
+                    <div class="panel-header">
+                        <div class="panel-title-group">
+                            <h2 class="panel-title">Battery Monitoring</h2>
+                            <p class="panel-subtitle">Real-time voltage & estimated SOC telemetry plot</p>
+                        </div>
+                        <span class="chart-tag">LIVE TELEMETRY</span>
+                    </div>
+
+                    <div class="chart-container">
+                        <canvas id="batteryChart"></canvas>
+                        <div id="chart-empty-state" class="chart-empty-overlay">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+                            </svg>
+                            <span>Waiting for live hardware data...</span>
+                            <p>Plot updates automatically when real telemetry packets arrive from ESP32</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Subsystems Health & Event Log (Stacked) -->
+                <div class="panel side-panel">
+                    
+                    <!-- System Subsystems Health Status -->
+                    <div class="system-health-section">
+                        <h3 class="side-panel-title">System Hardware Status</h3>
+                        <div class="health-list">
+                            <div class="health-item">
+                                <div class="health-item-info">
+                                    <span class="health-name">ESP32 Microcontroller</span>
+                                    <span class="health-detail">Wi-Fi HTTP REST Node</span>
+                                </div>
+                                <span id="health-esp32" class="health-badge offline">Offline</span>
+                            </div>
+
+                            <div class="health-item">
+                                <div class="health-item-info">
+                                    <span class="health-name">Power Relay Module</span>
+                                    <span class="health-detail">GPIO 26 • Active HIGH</span>
+                                </div>
+                                <span id="health-relay" class="health-badge off">OFF (Open)</span>
+                            </div>
+
+                            <div class="health-item">
+                                <div class="health-item-info">
+                                    <span class="health-name">Voltage Telemetry Sensor</span>
+                                    <span class="health-detail">GPIO 34 ADC Input</span>
+                                </div>
+                                <span id="health-sensor" class="health-badge waiting">Awaiting Data</span>
+                            </div>
+
+                            <div class="health-item">
+                                <div class="health-item-info">
+                                    <span class="health-name">Flask REST Backend</span>
+                                    <span class="health-detail">Port 5000 • CORS Enabled</span>
+                                </div>
+                                <span id="health-backend" class="health-badge online">Online</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recent Activity / Real Event Log -->
+                    <div class="activity-log-section">
+                        <div class="activity-header">
+                            <h3 class="side-panel-title">Recent Activity</h3>
+                            <span class="activity-count" id="event-count">0 Events</span>
+                        </div>
+                        <div class="activity-timeline" id="activity-timeline">
+                            <div class="empty-timeline-text" id="empty-timeline-text">No recent activity</div>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+        </main>
+
+
+        <!-- ==================================================================== -->
+        <!-- VIEW 2: SYSTEM ARCHITECTURE OVERVIEW TAB                             -->
+        <!-- ==================================================================== -->
+        <main id="view-overview" class="tab-content">
+            <div class="overview-container">
+                
+                <!-- Architecture Header Card -->
+                <div class="overview-hero">
+                    <span class="overview-tag">ENGINEERING DOCUMENTATION & VIVA REFERENCE</span>
+                    <h2 class="overview-heading">System Architecture & Working Principle</h2>
+                    <p class="overview-summary">
+                        The <strong>Smart EV Remote Charging & Auto Cut-Off System</strong> integrates an ESP32 microcontroller, a single-channel relay, an analog voltage sensor, and a TP4056 lithium battery charger with a Python Flask REST backend and an interactive web dashboard.
+                    </p>
+                </div>
+
+                <!-- Interactive Architecture Diagram Card -->
+                <div class="panel diagram-panel">
+                    <h3 class="panel-title">System Communication & Power Flow Architecture</h3>
+                    <div class="architecture-diagram-wrapper">
+                        <pre class="ascii-diagram">
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              WEB APPLICATION                                │
+│          (HTML5 / Modern Dark CSS / Javascript Telemetry Dashboard)         │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │ HTTP REST Requests (/start, /stop, /status)
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                             FLASK BACKEND                                   │
+│            (State Engine • Telemetry Ingestion • Auto Cut-Off Logic)        │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │ Wi-Fi HTTP Protocol (Port 80)
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           ESP32 CONTROLLER                                  │
+│                 (Dual Core 240MHz • Web Server • ADC)                       │
+└───────────────────┬─────────────────────────────────────┬───────────────────┘
+                    │                                     │
+           GPIO 34 Analog Read                  GPIO 26 Digital Output
+                    │                                     │
+                    ▼                                     ▼
+        ┌───────────────────────┐             ┌───────────────────────┐
+        │ VOLTAGE SENSOR MODULE │             │  5V DC RELAY SWITCH   │
+        │   (Resistor Divider)  │             │   (Isolated Control)  │
+        └───────────┬───────────┘             └───────────┬───────────┘
+                    │                                     │ 5V DC Power Line
+                    │ Terminal Sense                      ▼
+                    │                         ┌───────────────────────┐
+                    │                         │  TP4056 CHARGER BOARD │
+                    │                         │   (CC / CV Regulator) │
+                    │                         └───────────┬───────────┘
+                    │                                     │ Regulated Charge
+                    ▼                                     ▼
+        ┌─────────────────────────────────────────────────────────────┐
+        │               3.7V 18650 LI-ION BATTERY CELL                │
+        └─────────────────────────────────────────────────────────────┘
+                        </pre>
+                    </div>
+                </div>
+
+                <!-- Hardware Specifications Grid -->
+                <div class="specs-grid-layout">
+                    
+                    <!-- ESP32 -->
+                    <div class="component-card">
+                        <div class="comp-icon-box blue">⚡</div>
+                        <h4 class="comp-title">ESP32 DevKit V1</h4>
+                        <span class="comp-role">Central IoT Controller</span>
+                        <ul class="comp-specs">
+                            <li><strong>Connectivity:</strong> 2.4 GHz Wi-Fi (802.11 b/g/n)</li>
+                            <li><strong>HTTP Server:</strong> Listening on Port 80 (/on, /off, /status)</li>
+                            <li><strong>Relay Pin:</strong> GPIO 26 (Active HIGH Output)</li>
+                            <li><strong>ADC Pin:</strong> GPIO 34 (12-bit Analog Voltage Sensing)</li>
+                        </ul>
+                    </div>
+
+                    <!-- Relay Module -->
+                    <div class="component-card">
+                        <div class="comp-icon-box purple">🔌</div>
+                        <h4 class="comp-title">5V Single-Channel Relay</h4>
+                        <span class="comp-role">Power Isolation Gate</span>
+                        <ul class="comp-specs">
+                            <li><strong>Control Voltage:</strong> 5V DC (Optocoupler isolated)</li>
+                            <li><strong>Switching Target:</strong> 5V DC TP4056 Input line</li>
+                            <li><strong>State:</strong> Normally Open (NO) / Common (COM)</li>
+                            <li><strong>Safety Feature:</strong> Defaults to OPEN / OFF upon boot</li>
+                        </ul>
+                    </div>
+
+                    <!-- TP4056 Module -->
+                    <div class="component-card">
+                        <div class="comp-icon-box green">🔋</div>
+                        <h4 class="comp-title">TP4056 Charging Module</h4>
+                        <span class="comp-role">Li-ion CC/CV Controller</span>
+                        <ul class="comp-specs">
+                            <li><strong>Input Voltage:</strong> 5.0V DC (from Relay output)</li>
+                            <li><strong>Charging Method:</strong> Constant Current / Constant Voltage</li>
+                            <li><strong>Max Current:</strong> 1.0A charging limit</li>
+                            <li><strong>Cell Protection:</strong> Overcharge & over-discharge cutoff</li>
+                        </ul>
+                    </div>
+
+                    <!-- 18650 Battery -->
+                    <div class="component-card">
+                        <div class="comp-icon-box amber">⚡</div>
+                        <h4 class="comp-title">18650 Li-ion Cell</h4>
+                        <span class="comp-role">Energy Storage Prototype</span>
+                        <ul class="comp-specs">
+                            <li><strong>Nominal Voltage:</strong> 3.7V</li>
+                            <li><strong>Full-Charge Voltage:</strong> 4.20V (100% SOC)</li>
+                            <li><strong>Discharge Cut-off:</strong> 3.00V (0% SOC)</li>
+                            <li><strong>Capacity:</strong> 2600 mAh Single Cell</li>
+                        </ul>
+                    </div>
+
+                    <!-- Voltage Sensor -->
+                    <div class="component-card">
+                        <div class="comp-icon-box cyan">📊</div>
+                        <h4 class="comp-title">Analog Voltage Sensor</h4>
+                        <span class="comp-role">Real-Time Telemetry</span>
+                        <ul class="comp-specs">
+                            <li><strong>Principle:</strong> 5:1 Precision Resistive Divider</li>
+                            <li><strong>Input Range:</strong> 0.0V to 5.0V (0.0V to 25V capability)</li>
+                            <li><strong>Output:</strong> 0.0V to 3.3V safe for ESP32 ADC</li>
+                            <li><strong>Telemetry Route:</strong> ESP32 pushes to Flask /update_battery</li>
+                        </ul>
+                    </div>
+
+                    <!-- Flask REST Backend -->
+                    <div class="component-card">
+                        <div class="comp-icon-box teal">💻</div>
+                        <h4 class="comp-title">Flask REST Backend</h4>
+                        <span class="comp-role">Application & Safety Server</span>
+                        <ul class="comp-specs">
+                            <li><strong>Runtime:</strong> Python 3 / Flask / Flask-CORS</li>
+                            <li><strong>Endpoints:</strong> /start, /stop, /status, /update_battery</li>
+                            <li><strong>Algorithm:</strong> Piecewise Li-ion SOC estimation</li>
+                            <li><strong>Protection:</strong> Instant relay shutoff when voltage ≥ 4.20V</li>
+                        </ul>
+                    </div>
+
+                </div>
+
+                <!-- Safety & Prototype Specification Note -->
+                <div class="safety-card">
+                    <div class="safety-badge">PROTOTYPE ELECTRICAL SAFETY NOTICE</div>
+                    <p class="safety-text">
+                        This prototype operates entirely under <strong>low-voltage 5V DC</strong> power (5V DC USB adapter powering the relay and TP4056 module to charge a 3.7V single-cell 18650 Li-ion battery). The design demonstrates the software-defined remote charging and autonomous cut-off architecture safely without high-voltage AC mains hazards.
+                    </p>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+        <p><strong>Smart EV Remote Charging & Auto Cut-Off System</strong> &bull; Department of Electrical & Electronics / Computer Science Engineering &bull; ESP32 + Flask IoT Project</p>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
